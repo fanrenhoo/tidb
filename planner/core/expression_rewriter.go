@@ -1621,7 +1621,7 @@ func (er *expressionRewriter) caseToExpression(v *ast.CaseExpr) {
 
 func (er *expressionRewriter) patternLikeToExpression(v *ast.PatternLikeExpr) {
 	l := len(er.ctxStack)
-	er.err = expression.CheckArgsNotMultiColumnRow(er.ctxStack[l-2:]...)
+	er.err = expression.CheckArgsNotMultiColumnRow(er.ctxStack[l-3:]...)
 	if er.err != nil {
 		return
 	}
@@ -1630,22 +1630,42 @@ func (er *expressionRewriter) patternLikeToExpression(v *ast.PatternLikeExpr) {
 	var function expression.Expression
 	fieldType := &types.FieldType{}
 	isPatternExactMatch := false
+	escape := "?"
+	switch n := v.Escape.(type) {
+	case *driver.ParamMarkerExpr:
+		if n.InExecute {
+			param, err := expression.ParamMarkerExpression(er.sctx, n, false)
+			if err != nil {
+				return
+			}
+			str, isNull, err := expression.GetStringFromConstant(er.sctx, param)
+			if err != nil {
+				return
+			}
+			if isNull {
+				return
+			}
+			escape = str
+		}
+	case *driver.ValueExpr:
+		escape = v.Escape.(ast.ValueExpr).GetString()
+	}
 	// Treat predicate 'like' the same way as predicate '=' when it is an exact match and new collation is not enabled.
-	if patExpression, ok := er.ctxStack[l-1].(*expression.Constant); ok && !collate.NewCollationEnabled() {
+	if patExpression, ok := er.ctxStack[l-2].(*expression.Constant); ok && !collate.NewCollationEnabled() {
 		patString, isNull, err := patExpression.EvalString(nil, chunk.Row{})
 		if err != nil {
 			er.err = err
 			return
 		}
 		if !isNull {
-			patValue, patTypes := stringutil.CompilePattern(patString, v.Escape)
-			if stringutil.IsExactMatch(patTypes) && er.ctxStack[l-2].GetType().EvalType() == types.ETString {
+			patValue, patTypes := stringutil.CompilePattern(patString, escape[0])
+			if stringutil.IsExactMatch(patTypes) && er.ctxStack[l-l].GetType().EvalType() == types.ETString {
 				op := ast.EQ
 				if v.Not {
 					op = ast.NE
 				}
 				types.DefaultTypeForValue(string(patValue), fieldType, char, col)
-				function, er.err = er.constructBinaryOpFunction(er.ctxStack[l-2],
+				function, er.err = er.constructBinaryOpFunction(er.ctxStack[l-3],
 					&expression.Constant{Value: types.NewStringDatum(string(patValue)), RetType: fieldType},
 					op)
 				isPatternExactMatch = true
@@ -1653,12 +1673,12 @@ func (er *expressionRewriter) patternLikeToExpression(v *ast.PatternLikeExpr) {
 		}
 	}
 	if !isPatternExactMatch {
-		types.DefaultTypeForValue(int(v.Escape), fieldType, char, col)
+		types.DefaultTypeForValue(int(escape[0]), fieldType, char, col)
 		function = er.notToExpression(v.Not, ast.Like, &v.Type,
-			er.ctxStack[l-2], er.ctxStack[l-1], &expression.Constant{Value: types.NewIntDatum(int64(v.Escape)), RetType: fieldType})
+			er.ctxStack[l-3], er.ctxStack[l-2], &expression.Constant{Value: types.NewIntDatum(int64(escape[0])), RetType: fieldType})
 	}
 
-	er.ctxStackPop(2)
+	er.ctxStackPop(3)
 	er.ctxStackAppend(function, types.EmptyName)
 }
 
