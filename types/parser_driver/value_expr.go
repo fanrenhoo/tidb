@@ -236,7 +236,6 @@ func newParamMarkerExpr(offset int) ast.ParamMarkerExpr {
 
 // Format the ExprNode into a Writer.
 func (n *ParamMarkerExpr) Format(w io.Writer) {
-	//panic("Not implemented")
 	fmt.Fprint(w, "?")
 }
 

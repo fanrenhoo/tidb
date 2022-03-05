@@ -1630,25 +1630,16 @@ func (er *expressionRewriter) patternLikeToExpression(v *ast.PatternLikeExpr) {
 	var function expression.Expression
 	fieldType := &types.FieldType{}
 	isPatternExactMatch := false
-	escape := "?"
-	switch n := v.Escape.(type) {
-	case *driver.ParamMarkerExpr:
-		if n.InExecute {
-			param, err := expression.ParamMarkerExpression(er.sctx, n, false)
-			if err != nil {
-				return
-			}
-			str, isNull, err := expression.GetStringFromConstant(er.sctx, param)
-			if err != nil {
-				return
-			}
-			if isNull {
-				return
-			}
+	escape := "\\"
+	if escapeExpression, ok := er.ctxStack[l-1].(*expression.Constant); ok {
+		str, isNull, err := escapeExpression.EvalString(nil, chunk.Row{})
+		if err != nil {
+			er.err = err
+			return
+		}
+		if !isNull {
 			escape = str
 		}
-	case *driver.ValueExpr:
-		escape = v.Escape.(ast.ValueExpr).GetString()
 	}
 	// Treat predicate 'like' the same way as predicate '=' when it is an exact match and new collation is not enabled.
 	if patExpression, ok := er.ctxStack[l-2].(*expression.Constant); ok && !collate.NewCollationEnabled() {

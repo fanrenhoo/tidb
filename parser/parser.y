@@ -5441,7 +5441,7 @@ PredicateExpr:
 			Expr:    $1,
 			Pattern: $3,
 			Not:     !$2.(bool),
-			Escape:  $4,
+			Escape:  $4.(ast.ValueExpr),
 		}
 	}
 |	BitExpr RegexpOrNotOp SimpleExpr
