@@ -1642,7 +1642,14 @@ func (er *expressionRewriter) patternLikeToExpression(v *ast.PatternLikeExpr) {
 		}
 	}
 	// Treat predicate 'like' the same way as predicate '=' when it is an exact match and new collation is not enabled.
-	if patExpression, ok := er.ctxStack[l-2].(*expression.Constant); ok && !collate.NewCollationEnabled() {
+	isPreparedParamMarker := false
+	switch n := v.Escape.(type) {
+	case *driver.ParamMarkerExpr:
+		if !n.InExecute {
+			isPreparedParamMarker = true
+		}
+	}
+	if patExpression, ok := er.ctxStack[l-2].(*expression.Constant); ok && !collate.NewCollationEnabled() && !isPreparedParamMarker {
 		patString, isNull, err := patExpression.EvalString(nil, chunk.Row{})
 		if err != nil {
 			er.err = err
@@ -1650,7 +1657,7 @@ func (er *expressionRewriter) patternLikeToExpression(v *ast.PatternLikeExpr) {
 		}
 		if !isNull {
 			patValue, patTypes := stringutil.CompilePattern(patString, escape[0])
-			if stringutil.IsExactMatch(patTypes) && er.ctxStack[l-l].GetType().EvalType() == types.ETString {
+			if stringutil.IsExactMatch(patTypes) && er.ctxStack[l-3].GetType().EvalType() == types.ETString {
 				op := ast.EQ
 				if v.Not {
 					op = ast.NE
