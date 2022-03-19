@@ -57,10 +57,7 @@ func (e *ShowColumnsTableExtractor) Extract(show *ast.ShowStmt) bool {
 		switch pattern.Pattern.(type) {
 		case *driver.ValueExpr:
 			// It is used in `SHOW COLUMNS FROM t LIKE `abc``.
-			escape := "?"
-			if _, ok := pattern.Escape.(*driver.ParamMarkerExpr); !ok {
-				escape = pattern.Escape.(*driver.ValueExpr).GetString()
-			}
+			escape := pattern.Escape.(*driver.ValueExpr).GetString()
 			ptn := pattern.Pattern.(*driver.ValueExpr).GetString()
 			patValue, patTypes := stringutil.CompilePattern(ptn, escape[0])
 			if stringutil.IsExactMatch(patTypes) {
@@ -112,10 +109,7 @@ func (e *ShowTablesTableExtractor) Extract(show *ast.ShowStmt) bool {
 		switch pattern.Pattern.(type) {
 		case *driver.ValueExpr:
 			// It is used in `SHOW TABLE in t LIKE `abc``.
-			escape := "?"
-			if _, ok := pattern.Escape.(*driver.ParamMarkerExpr); !ok {
-				escape = pattern.Escape.(*driver.ValueExpr).GetString()
-			}
+			escape := pattern.Escape.(*driver.ValueExpr).GetString()
 			ptn := pattern.Pattern.(*driver.ValueExpr).GetString()
 			patValue, patTypes := stringutil.CompilePattern(ptn, escape[0])
 			if stringutil.IsExactMatch(patTypes) {

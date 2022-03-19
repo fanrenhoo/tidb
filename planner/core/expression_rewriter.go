@@ -1642,14 +1642,12 @@ func (er *expressionRewriter) patternLikeToExpression(v *ast.PatternLikeExpr) {
 		}
 	}
 	// Treat predicate 'like' the same way as predicate '=' when it is an exact match and new collation is not enabled.
-	isPreparedParamMarker := false
-	switch n := v.Escape.(type) {
+	isParamMarker := false
+	switch v.Escape.(type) {
 	case *driver.ParamMarkerExpr:
-		if !n.InExecute {
-			isPreparedParamMarker = true
-		}
+		isParamMarker = true
 	}
-	if patExpression, ok := er.ctxStack[l-2].(*expression.Constant); ok && !collate.NewCollationEnabled() && !isPreparedParamMarker {
+	if patExpression, ok := er.ctxStack[l-2].(*expression.Constant); ok && !collate.NewCollationEnabled() && !isParamMarker {
 		patString, isNull, err := patExpression.EvalString(nil, chunk.Row{})
 		if err != nil {
 			er.err = err
