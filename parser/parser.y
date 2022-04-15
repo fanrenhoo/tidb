@@ -10763,20 +10763,12 @@ ShowLikeOrWhereOpt:
 	{
 		$$ = nil
 	}
-|	"LIKE" SimpleExpr LikeEscapeOpt
+|	"LIKE" SimpleExpr
 	{
-		escapeexpr := $3
-		if _, ok := escapeexpr.(ast.ParamMarkerExpr); !ok {
-			// it can not convert to `ParamMarkerExpr`, so it must be `ValueExpr`
-			escape := escapeexpr.(ast.ValueExpr).GetString()
-			if len(escape) > 1 {
-				yylex.AppendError(ErrWrongArguments.GenWithStackByArgs("ESCAPE"))
-				return 1
-			}
-		}
+		expr := ast.NewValueExpr("\\", parser.charset, parser.collation)
 		$$ = &ast.PatternLikeExpr{
 			Pattern: $2,
-			Escape:  $3.(ast.ValueExpr),
+			Escape:  expr,
 		}
 	}
 |	"WHERE" Expression
