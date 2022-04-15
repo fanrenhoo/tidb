@@ -99,15 +99,6 @@ func TestEscapeSupportForPrepareStmt(t *testing.T) {
 	tk.MustExec("set @e='\\\\';")
 	result = tk.MustQuery("execute stmt1 using @e;")
 	result.Check(testkit.Rows("a", "a\\b"))
-	tk.MustExec("prepare stmt1 from 'show columns from t1 like \\'a\\%\\' escape ?';")
-	tk.MustExec("set @e='\\\\';")
-	result = tk.MustQuery("execute stmt1 using @e;")
-	result.Check(testkit.Rows("a"))
-	tk.MustExec("deallocate prepare stmt1;")
-	tk.MustExec("prepare stmt1 from 'select * from t1 where a not like \\'a\\\\%\\' escape ?';")
-	tk.MustExec("set @e='\\\\';")
-	result = tk.MustQuery("execute stmt1 using @e;")
-	result.Check(testkit.Rows("a", "a\\b"))
 	tk.MustExec("deallocate prepare stmt1;")
 }
 
