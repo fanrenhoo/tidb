@@ -35,7 +35,6 @@ import (
 	"github.com/pingcap/errors"
 	"github.com/pingcap/failpoint"
 	"github.com/pingcap/tidb/config"
-	"github.com/pingcap/tidb/ddl/placement"
 	"github.com/pingcap/tidb/domain"
 	"github.com/pingcap/tidb/errno"
 	"github.com/pingcap/tidb/executor"
@@ -65,6 +64,7 @@ import (
 	newTestkit "github.com/pingcap/tidb/testkit"
 	"github.com/pingcap/tidb/types"
 	"github.com/pingcap/tidb/util"
+	"github.com/pingcap/tidb/util/memory"
 	"github.com/pingcap/tidb/util/sqlexec"
 	"github.com/pingcap/tidb/util/testkit"
 	"github.com/pingcap/tidb/util/testleak"
@@ -3789,46 +3789,21 @@ func (s *testSessionSerialSuite) TestGlobalAndLocalTxn(c *C) {
 	}
 	tk := testkit.NewTestKitWithInit(c, s.store)
 	tk.MustExec("set global tidb_enable_local_txn = on;")
-	tk.MustExec("drop table if exists t1;")
-	defer tk.MustExec("drop table if exists t1")
+	tk.MustExec("drop table if exists t1")
+	tk.MustExec("drop placement policy if exists p1")
+	tk.MustExec("drop placement policy if exists p2")
+	tk.MustExec("create placement policy p1 leader_constraints='[+zone=dc-1]'")
+	tk.MustExec("create placement policy p2 leader_constraints='[+zone=dc-2]'")
 	tk.MustExec(`create table t1 (c int)
 PARTITION BY RANGE (c) (
-	PARTITION p0 VALUES LESS THAN (100),
-	PARTITION p1 VALUES LESS THAN (200)
+	PARTITION p0 VALUES LESS THAN (100) placement policy p1,
+	PARTITION p1 VALUES LESS THAN (200) placement policy p2
 );`)
-	// Config the Placement Rules
-	is := s.dom.InfoSchema()
-	tb, err := is.TableByName(model.NewCIStr("test"), model.NewCIStr("t1"))
-	c.Assert(err, IsNil)
-	setBundle := func(parName, dc string) {
-		pid, err := tables.FindPartitionByName(tb.Meta(), parName)
-		c.Assert(err, IsNil)
-		groupID := placement.GroupID(pid)
-		is.SetBundle(&placement.Bundle{
-			ID: groupID,
-			Rules: []*placement.Rule{
-				{
-					GroupID: groupID,
-					Role:    placement.Leader,
-					Count:   1,
-					Constraints: []placement.Constraint{
-						{
-							Key:    placement.DCLabelKey,
-							Op:     placement.In,
-							Values: []string{dc},
-						},
-						{
-							Key:    placement.EngineLabelKey,
-							Op:     placement.NotIn,
-							Values: []string{placement.EngineLabelTiFlash},
-						},
-					},
-				},
-			},
-		})
-	}
-	setBundle("p0", "dc-1")
-	setBundle("p1", "dc-2")
+	defer func() {
+		tk.MustExec("drop table if exists t1")
+		tk.MustExec("drop placement policy if exists p1")
+		tk.MustExec("drop placement policy if exists p2")
+	}()
 
 	// set txn_scope to global
 	tk.MustExec(fmt.Sprintf("set @@session.txn_scope = '%s';", kv.GlobalTxnScope))
@@ -3986,6 +3961,18 @@ func (s *testSessionSuite2) TestSetEnableRateLimitAction(c *C) {
 	// assert default value
 	result := tk.MustQuery("select @@tidb_enable_rate_limit_action;")
 	result.Check(testkit.Rows("1"))
+	tk.MustExec("use test")
+	tk.MustExec("create table tmp123(id int)")
+	tk.MustQuery("select * from tmp123;")
+	haveRateLimitAction := false
+	action := tk.Se.GetSessionVars().StmtCtx.MemTracker.GetFallbackForTest(false)
+	for ; action != nil; action = action.GetFallback() {
+		if action.GetPriority() == memory.DefRateLimitPriority {
+			haveRateLimitAction = true
+			break
+		}
+	}
+	c.Assert(haveRateLimitAction, IsTrue)
 
 	// assert set sys variable
 	tk.MustExec("set global tidb_enable_rate_limit_action= '0';")
@@ -3996,6 +3983,16 @@ func (s *testSessionSuite2) TestSetEnableRateLimitAction(c *C) {
 	tk.Se = se
 	result = tk.MustQuery("select @@tidb_enable_rate_limit_action;")
 	result.Check(testkit.Rows("0"))
+
+	haveRateLimitAction = false
+	action = tk.Se.GetSessionVars().StmtCtx.MemTracker.GetFallbackForTest(false)
+	for ; action != nil; action = action.GetFallback() {
+		if action.GetPriority() == memory.DefRateLimitPriority {
+			haveRateLimitAction = true
+			break
+		}
+	}
+	c.Assert(haveRateLimitAction, IsFalse)
 }
 
 func (s *testSessionSuite3) TestSetVarHint(c *C) {
@@ -5922,6 +5919,7 @@ func (s *testTiDBAsLibrary) TestMemoryLeak(c *C) {
 func (s *testSessionSuite) TestTiDBReadStaleness(c *C) {
 	tk := testkit.NewTestKit(c, s.store)
 	tk.MustExec("set @@tidb_read_staleness='-5'")
+	tk.MustExec("set @@tidb_read_staleness='-100'")
 	err := tk.ExecToErr("set @@tidb_read_staleness='-5s'")
 	c.Assert(err, NotNil)
 	err = tk.ExecToErr("set @@tidb_read_staleness='foo'")
