@@ -8112,7 +8112,7 @@ HelpStmt:
 	}
 
 SelectStmtBasic:
-	"SELECT" SelectStmtOpts SelectStmtFieldList
+	"SELECT" SelectStmtOpts SelectStmtFieldList SelectStmtIntoOption
 	{
 		st := &ast.SelectStmt{
 			SelectStmtOpts: $2.(*ast.SelectStmtOpts),
@@ -8122,6 +8122,9 @@ SelectStmtBasic:
 		}
 		if st.SelectStmtOpts.TableHints != nil {
 			st.TableHints = st.SelectStmtOpts.TableHints
+		}
+		if $4 != nil {
+			st.SelectIntoOpt = $4.(*ast.SelectIntoOption)
 		}
 		$$ = st
 	}
@@ -8281,6 +8284,10 @@ SelectStmt:
 			st.Limit = $5.(*ast.Limit)
 		}
 		if $7 != nil {
+			if st.SelectIntoOpt != nil {
+				yylex.AppendError(ErrSyntax)
+				return 1
+			}
 			st.SelectIntoOpt = $7.(*ast.SelectIntoOption)
 		}
 		$$ = st
@@ -8301,6 +8308,10 @@ SelectStmt:
 			st.LockInfo = $5.(*ast.SelectLockInfo)
 		}
 		if $6 != nil {
+			if st.SelectIntoOpt != nil {
+				yylex.AppendError(ErrSyntax)
+				return 1
+			}
 			st.SelectIntoOpt = $6.(*ast.SelectIntoOption)
 		}
 		$$ = st
@@ -8319,6 +8330,10 @@ SelectStmt:
 		}
 		if $5 != nil {
 			st.SelectIntoOpt = $5.(*ast.SelectIntoOption)
+		}
+		if st.SelectIntoOpt != nil {
+			yylex.AppendError(ErrSyntax)
+			return 1
 		}
 		$$ = st
 	}
